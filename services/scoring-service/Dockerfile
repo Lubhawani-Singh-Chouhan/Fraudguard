@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN useradd -m -u 10001 scoring
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+COPY rules ./rules
+COPY models ./models
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8000
+
+USER scoring
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

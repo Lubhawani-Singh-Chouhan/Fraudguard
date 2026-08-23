@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  java:
+    name: Java services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [consumer-service, gateway-service]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+      - name: Test + package
+        run: mvn -B test package
+
+  python:
+    name: Python services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [scoring-service, mcp-server]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install + test
+        run: |
+          pip install -r requirements.txt
+          PYTHONPATH=. pytest -q

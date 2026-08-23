@@ -1,0 +1,239 @@
+# Local stack for FraudGuard.
+# Infra first: kafka, redis, postgres, prometheus, grafana.
+# Apps: scoring-service, consumer-service, gateway-service, transaction-simulator, mcp-server.
+#
+# From repo root:
+#   docker compose up --build
+#
+# Kafka uses KRaft (no ZooKeeper). Services inside the compose network talk to
+# kafka:29092; anything on the host (k6, kafka-console-consumer) uses localhost:9092.
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka
+    container_name: fraudguard-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    networks:
+      - fraudguard
+
+  redis:
+    image: redis:7-alpine
+    container_name: fraudguard-redis
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - fraudguard
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fraudguard-postgres
+    environment:
+      POSTGRES_DB: fraudguard
+      POSTGRES_USER: fraudguard
+      POSTGRES_PASSWORD: fraudguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./services/consumer-service/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./services/mcp-server/sql/readonly-user.sql:/docker-entrypoint-initdb.d/02-readonly-user.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraudguard -d fraudguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 8
+    restart: unless-stopped
+    networks:
+      - fraudguard
+
+  scoring-service:
+    build:
+      context: ./services/scoring-service
+    container_name: fraudguard-scoring
+    environment:
+      SCORING_MODE: rules
+      FRAUD_THRESHOLD: "0.70"
+      RULES_PATH: /app/rules/scoring_rules.json
+      MODEL_PATH: /app/models/isolation_forest.pkl
+      # Set AWS_S3_BUCKET to load rules from S3 instead of the local file (Phase 5).
+      AWS_S3_BUCKET: ""
+      AWS_S3_KEY: scoring/scoring_rules.json
+      AWS_REGION: ap-south-1
+      LOG_JSON: "true"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+    networks:
+      - fraudguard
+
+  consumer-service:
+    build:
+      context: ./services/consumer-service
+    container_name: fraudguard-consumer
+    environment:
+      SERVER_PORT: 8081
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fraudguard
+      SPRING_DATASOURCE_USERNAME: fraudguard
+      SPRING_DATASOURCE_PASSWORD: fraudguard
+      SCORING_BASE_URL: http://scoring-service:8000
+      FRAUD_ALERT_THRESHOLD: "0.70"
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC -Djava.net.preferIPv4Stack=true"
+    ports:
+      - "8081:8081"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      scoring-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - fraudguard
+
+  gateway-service:
+    build:
+      context: ./services/gateway-service
+    container_name: fraudguard-gateway
+    environment:
+      SERVER_PORT: 8080
+      CONSUMER_URI: http://consumer-service:8081
+      JAVA_OPTS: "-Xms128m -Xmx256m -XX:+UseG1GC -Djava.net.preferIPv4Stack=true"
+    ports:
+      - "8080:8080"
+    depends_on:
+      consumer-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    networks:
+      - fraudguard
+
+  transaction-simulator:
+    build:
+      context: ./services/transaction-simulator
+    container_name: fraudguard-simulator
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: transactions
+      TX_RATE_PER_SEC: "20"
+      FRAUD_RATIO: "0.08"
+      LOG_JSON: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      consumer-service:
+        condition: service_started
+    networks:
+      - fraudguard
+    restart: unless-stopped
+
+  mcp-server:
+    build:
+      context: ./services/mcp-server
+    container_name: fraudguard-mcp
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8090"
+      DATABASE_URL: postgresql://fraudguard_readonly:fraudguard_readonly@postgres:5432/fraudguard
+      MCP_RATE_LIMIT_MAX: "30"
+      MCP_RATE_LIMIT_WINDOW_SEC: "60"
+      MCP_MAX_ROWS: "50"
+      LOG_JSON: "true"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+    networks:
+      - fraudguard
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: fraudguard-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=24h
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - fraudguard
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: fraudguard-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - fraudguard
+
+networks:
+  fraudguard:
+    driver: bridge

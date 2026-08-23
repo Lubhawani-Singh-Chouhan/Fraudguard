@@ -1,0 +1,2 @@
+# Models go here at runtime (IsolationForest pickle).
+# Kept empty in git so Docker COPY models ./models succeeds.

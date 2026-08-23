@@ -1,0 +1,93 @@
+spring:
+  application:
+    name: consumer-service
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: fraudguard-consumer
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # keep this small locally; one consumer instance is enough for the demo
+        max.poll.records: 50
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: "1"
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/fraudguard}
+    username: ${SPRING_DATASOURCE_USERNAME:fraudguard}
+    password: ${SPRING_DATASOURCE_PASSWORD:fraudguard}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  sql:
+    init:
+      mode: always
+
+server:
+  port: ${SERVER_PORT:8081}
+
+fraudguard:
+  topics:
+    transactions: transactions
+    alerts: fraud-alerts
+  scoring:
+    base-url: ${SCORING_BASE_URL:http://localhost:8000}
+    connect-timeout-ms: 500
+    read-timeout-ms: 1500
+  alert-threshold: ${FRAUD_ALERT_THRESHOLD:0.70}
+
+# If scoring-service is slow or down, fail fast and use the local fallback
+# instead of backing up the Kafka consumer. This is the interview talking point.
+resilience4j:
+  circuitbreaker:
+    instances:
+      scoringService:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+  timelimiter:
+    instances:
+      scoringService:
+        timeout-duration: 2s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,circuitbreakers
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+logging:
+  level:
+    com.fraudguard.consumer: INFO
+    org.springframework.kafka: INFO

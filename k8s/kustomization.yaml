@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: fraudguard
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - redis-deployment.yaml
+  - postgres-deployment.yaml
+  - kafka/kafka-deployment.yaml
+  - scoring-service-deployment.yaml
+  - consumer-service-deployment.yaml
+  - gateway-deployment.yaml
+  - simulator-deployment.yaml
+  - hpa.yaml
+  - prometheus/prometheus.yaml
+  - grafana/grafana.yaml

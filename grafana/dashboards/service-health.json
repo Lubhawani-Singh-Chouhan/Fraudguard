@@ -1,0 +1,86 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "up{job=~\"gateway-service|consumer-service|scoring-service\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Service scrape up",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "process_cpu_usage{job=~\"gateway-service|consumer-service\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM process CPU usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{job=~\"gateway-service|consumer-service\",area=\"heap\"}",
+          "legendFormat": "{{job}} heap",
+          "refId": "A"
+        },
+        {
+          "expr": "process_resident_memory_bytes{job=\"scoring-service\"}",
+          "legendFormat": "scoring RSS",
+          "refId": "B"
+        }
+      ],
+      "title": "Memory usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "resilience4j_circuitbreaker_state{job=\"consumer-service\"}",
+          "legendFormat": "{{name}} state",
+          "refId": "A"
+        },
+        {
+          "expr": "resilience4j_circuitbreaker_buffered_calls{job=\"consumer-service\"}",
+          "legendFormat": "{{name}} {{kind}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Scoring circuit breaker",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["fraudguard"],
+  "time": { "from": "now-15m", "to": "now" },
+  "title": "FraudGuard - service health",
+  "uid": "fg-health",
+  "version": 1
+}

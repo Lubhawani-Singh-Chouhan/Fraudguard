@@ -1,0 +1,24 @@
+{
+  "weights": {
+    "high_amount": 0.35,
+    "elevated_amount": 0.15,
+    "amount_zscore": 0.30,
+    "amount_unusual": 0.15,
+    "velocity_spike": 0.30,
+    "velocity_elevated": 0.12,
+    "new_device": 0.18,
+    "odd_hour": 0.10
+  },
+  "thresholds": {
+    "high_amount_inr": 75000,
+    "elevated_amount_inr": 40000,
+    "zscore_high": 3.0,
+    "zscore_medium": 2.0,
+    "min_history_for_zscore": 5,
+    "velocity_spike_5m": 8,
+    "velocity_elevated_5m": 4,
+    "odd_hour_amount_inr": 20000,
+    "alert_score": 0.70,
+    "medium_score": 0.40
+  }
+}

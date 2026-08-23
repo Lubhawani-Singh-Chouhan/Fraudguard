@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scoring-service
+  namespace: fraudguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scoring-service
+  template:
+    metadata:
+      labels:
+        app: scoring-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: scoring-service
+          image: fraudguard/scoring-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SCORING_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: fraudguard-config
+                  key: SCORING_MODE
+            - name: RULES_PATH
+              value: /app/rules/scoring_rules.json
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 8
+            periodSeconds: 8
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scoring-service
+  namespace: fraudguard
+spec:
+  selector:
+    app: scoring-service
+  ports:
+    - port: 8000
+      targetPort: 8000

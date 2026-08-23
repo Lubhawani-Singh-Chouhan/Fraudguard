@@ -1,0 +1,11 @@
+{
+  "user_id": "user_001",
+  "amount": 92000,
+  "currency": "INR",
+  "merchant_id": "m_amazon",
+  "merchant_category": "ecommerce",
+  "location": "Goa",
+  "device_id": "dev_brand_new",
+  "channel": "card",
+  "timestamp": "2026-08-18T18:00:00Z"
+}

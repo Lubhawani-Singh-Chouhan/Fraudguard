@@ -1,0 +1,43 @@
+# Java / Maven
+**/target/
+**/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+hs_err_pid*
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/*.egg-info/
+**/.mypy_cache/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+*.pem
+*.key
+
+# Logs / local data
+*.log
+data/
+postgres-data/
+redis-data/
+
+# Models generated at runtime
+services/scoring-service/models/*.pkl
+
+# Load test output
+load-tests/results/
