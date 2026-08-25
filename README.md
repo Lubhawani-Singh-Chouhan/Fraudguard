@@ -1,33 +1,29 @@
-# FraudGuard
+# FraudGuard – Real-Time Transaction Stream Processor
 
-Kafka-driven payment fraud detection: simulated transactions go onto a `transactions`
-topic, a Spring Boot consumer enriches them from Redis, a Python FastAPI service scores
-them, results land in Postgres, and high-risk rows are published to `fraud-alerts`.
+**Kafka · Spring Boot · Python · Redis · PostgreSQL**
 
-Local stack is Docker Compose. Kubernetes manifests are for kind/minikube. AWS stretch is
-EC2 + S3 + ECR (not EKS).
+Built a real-time fraud detection pipeline using Kafka, Spring Boot, Redis, FastAPI, and
+PostgreSQL to score and store high-risk payment transactions, with a circuit breaker
+(Resilience4j) so scoring outages don’t stall the consumer. Added a read-only MCP server
+so an LLM can query fraud data in plain English without writing SQL.
 
-This sits next to my [distributed rate limiter](https://github.com/) (Spring Boot + Redis).
-That project was "protect an HTTP API." This one is "process a stream."
+Local stack is Docker Compose.
+
+This sits next to my [distributed rate limiter](https://github.com/Lubhawani-Singh-Chouhan/Distributed-Rate-Limiter)
+(Spring Boot + Redis). That project was "protect an HTTP API." This one is "process a stream."
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     Sim["transaction-simulator"] --> KafkaTx["Kafka: transactions"]
-    GW["Spring Cloud Gateway :8080"] --> KafkaTx
-    KafkaTx --> Consumer["consumer-service"]
+    GW["Gateway :8080"] --> KafkaTx
+    KafkaTx --> Consumer["consumer-service<br/>Spring Boot"]
     Consumer --> Redis[("Redis features")]
-    Consumer -->|"REST + Resilience4j CB"| Score["scoring-service FastAPI"]
+    Consumer -->|"REST + Resilience4j CB"| Score["scoring-service<br/>FastAPI"]
     Consumer --> PG[("PostgreSQL")]
     Consumer --> KafkaAlert["Kafka: fraud-alerts"]
-    KafkaAlert --> Consumer
-    GW --> Consumer
-    MCP["mcp-server :8090"] --> PG
-    Prom["Prometheus"] --> GW
-    Prom --> Consumer
-    Prom --> Score
-    Graf["Grafana :3000"] --> Prom
+    MCP["mcp-server"] --> PG
 ```
 
 ```mermaid
@@ -57,35 +53,31 @@ sequenceDiagram
 
 ## Tech stack
 
-Java 21 · Spring Boot 3.3 · Spring Cloud Gateway · Spring Kafka · Resilience4j · Redis 7 ·
-PostgreSQL 16 · Python 3.11 / FastAPI · Kafka (KRaft, Confluent image) · Prometheus ·
-Grafana · Docker Compose · Kubernetes (kind) · k6 · GitHub Actions · MCP (`mcp` Python SDK).
+Kafka · Spring Boot 3.3 (Java 21) · Python 3.11 / FastAPI · Redis · PostgreSQL ·
+Resilience4j · MCP.
 
-I used Java 21 here because that's what the rate limiter already runs on. Scoring is
-**rules-based** (amount z-score, velocity, new-device, odd-hour). There is an IsolationForest
-path behind `SCORING_MODE=ml` so I can talk about swapping the model without pretending I
-shipped a real ML pipeline.
+Scoring is **rules-based** (amount z-score, velocity, new-device, odd-hour). There is an
+optional IsolationForest path behind `SCORING_MODE=ml` so the scorer can be swapped later —
+it is not the default, and it is not an ML fraud model.
 
 ## Repo layout
 
 ```
 fraudguard/
 ├── docker-compose.yml
-├── k8s/                          # kind/minikube manifests + HPA on scoring-service
 ├── services/
-│   ├── gateway-service/          # Spring Cloud Gateway
+│   ├── gateway-service/          # inject / query HTTP API
 │   ├── consumer-service/         # Kafka → Redis → score → Postgres
 │   ├── scoring-service/          # FastAPI rules engine
-│   ├── transaction-simulator/    # synthetic INR payment stream
+│   ├── transaction-simulator/    # synthetic payment stream
 │   └── mcp-server/               # read-only MCP tools for Cursor/Claude
-├── infra/aws/                    # Terraform: EC2 + S3 + ECR (stretch)
-├── load-tests/k6/
-└── docs/                         # JSON schema + MCP client setup
+├── docs/                         # JSON schema + MCP client setup
+├── k8s/                          # optional kind/minikube manifests
+├── infra/aws/                    # optional EC2 + S3 + ECR stretch
+└── load-tests/k6/
 ```
 
 JSON schema for the Kafka payload: [`docs/transaction-schema.md`](docs/transaction-schema.md).
-Avro + Schema Registry is future work — plain JSON is enough to inspect with
-`kafka-console-consumer`.
 
 ## How to run (local)
 
@@ -108,8 +100,8 @@ Give Kafka ~30s on a cold start, then:
 
 ```bash
 # inject one transaction (or use docs/sample-high-risk.json)
-curl -X POST http://localhost:8080/transactions ^
-  -H "Content-Type: application/json" ^
+curl -X POST http://localhost:8080/transactions \
+  -H "Content-Type: application/json" \
   -d "@docs/sample-high-risk.json"
 
 # wait a second, then (use the transaction_id from the 202 body)
@@ -131,15 +123,8 @@ Confirm Kafka has messages (optional):
 docker exec -it fraudguard-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic transactions --from-beginning --max-messages 5
 ```
 
-### Grafana
-
-Dashboards provision automatically under folder **FraudGuard**:
-
-1. throughput & latency
-2. fraud alert rate
-3. service health / circuit breaker
-
-Take screenshots from a live run for the README/portfolio. I did not commit fake graphs.
+Grafana dashboards provision automatically (throughput, fraud alert rate, circuit breaker).
+Take screenshots from a live run if you want them for a portfolio.
 
 ## MCP (ask the database in English)
 
@@ -169,36 +154,23 @@ Example prompts after Compose is up:
 
 No extra UI — the chat client *is* the interface.
 
-## Kubernetes (kind / minikube)
+## Design decisions
 
-Compose is the path I actually iterate on. The manifests are there to show I can describe
-the same topology as Deployments/Services plus an HPA.
-
-```bash
-# build images with tags the manifests expect
-docker compose build
-docker tag fraudguard-scoring-service fraudguard/scoring-service:1.0.0
-docker tag fraudguard-consumer-service fraudguard/consumer-service:1.0.0
-docker tag fraudguard-gateway-service fraudguard/gateway-service:1.0.0
-docker tag fraudguard-transaction-simulator fraudguard/transaction-simulator:1.0.0
-
-kind create cluster --name fraudguard
-kind load docker-image fraudguard/scoring-service:1.0.0 --name fraudguard
-kind load docker-image fraudguard/consumer-service:1.0.0 --name fraudguard
-kind load docker-image fraudguard/gateway-service:1.0.0 --name fraudguard
-kind load docker-image fraudguard/transaction-simulator:1.0.0 --name fraudguard
-
-kubectl apply -k k8s/
-
-kubectl -n fraudguard get pods
-# gateway NodePort 30080, Grafana 30300, Prometheus 30090
-```
-
-HPA is on **scoring-service** only (CPU 70%, 1–3 replicas). That service is the compute hop;
-the consumer is I/O (Kafka + Redis + HTTP). metrics-server must be installed in kind for HPA
-to actually scale — without it the HPA object still applies, it just won't change replica
-counts. I mention that in interviews instead of claiming I "designed autoscaling for
-production."
+- **Kafka instead of REST between producer and consumer.** The simulator should not care
+  if scoring is slow. Kafka gives backpressure, replay (`--from-beginning`), and a place to
+  hang a second consumer later (analytics) without touching the producer. Scoring is still
+  a **sync REST** call because a request/reply topic plus correlation ids is a bigger
+  follow-up; I'd do that next if scoring p95 started to hurt.
+- **Circuit breaker on the scoring call.** If FastAPI is down, the Kafka consumer should
+  still drain the topic. Resilience4j opens after 50% failures in a 10-call window;
+  `LocalRulesFallback` does a simpler amount/device/velocity check so we don't just drop
+  messages. Trade-off: fallback scores are coarser, which I accept for availability.
+- **Rules engine as the real scorer.** I can explain every weight in
+  `services/scoring-service/rules/scoring_rules.json`. The IsolationForest is behind a flag
+  and trained on synthetic data — I would not put that on a resume as "ML fraud model."
+- **MCP tools never take a SQL string.** The LLM only fills typed arguments. Queries are
+  parameterized, the role is SELECT-only, and unfiltered dumps are rejected. That is the
+  difference between "an LLM can query my fraud DB" and "an LLM can wreck my fraud DB."
 
 ## Tests
 
@@ -224,10 +196,17 @@ mvn -q test
 
 CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs those on push/PR.
 
+## Observability
+
+- Spring: Micrometer → `/actuator/prometheus`
+- FastAPI: `prometheus_fastapi_instrumentator` → `/metrics`
+- Custom counters: `fraudguard_transactions_scored_total`,
+  `fraudguard_alerts_published_total`, `fraudguard_transactions_fallback_total`
+- JSON logs (`logstash-logback-encoder` / `python-json-logger`)
+
 ## Load tests
 
-k6 scripts live in [`load-tests/`](load-tests/README.md). Project 1 already has Gatling; this
-one uses k6 for scoring HTTP latency.
+k6 scripts live in [`load-tests/`](load-tests/README.md).
 
 ```bash
 k6 run load-tests/k6/scoring-latency.js
@@ -237,64 +216,55 @@ Target I set for myself: **p95 scoring < 200ms**. The rules engine is cheap; the
 moves under load is consumer e2e (`fraudguard_pipeline_latency` on `:8081/actuator/prometheus`)
 once Kafka + Redis + HTTP are in the path.
 
-## Design decisions
+## Kubernetes (optional)
 
-- **Kafka instead of REST between producer and consumer.** The simulator should not care
-  if scoring is slow. Kafka gives backpressure, replay (`--from-beginning`), and a place to
-  hang a second consumer later (analytics) without touching the producer. I still call
-  scoring over **sync REST** because wiring a `scoring-requests` topic + correlation ids is
-  a bigger project; I'd do that next if the scoring p95 started to hurt.
-- **Circuit breaker on the scoring call.** If FastAPI is down, the Kafka consumer should
-  still drain the topic. Resilience4j opens after 50% failures in a 10-call window;
-  `LocalRulesFallback` does a dumber amount/device/velocity check so we don't just drop
-  messages. Trade-off: fallback scores are coarser, which I accept for availability.
-- **HPA on scoring-service, not on the gateway.** Scoring is CPU (rules + optional sklearn).
-  Gateway/consumer are I/O-bound and would scale on lag/connections, not CPU.
-- **Rules engine as the real scorer.** I can explain every weight in
-  `services/scoring-service/rules/scoring_rules.json`. The IsolationForest is behind a flag
-  and trained on synthetic data — I would not put that on a resume as "ML fraud model."
-- **No EKS.** Local kind already tells the Kubernetes story. AWS stretch is EC2 + S3 + ECR
-  so I can say I pushed images and loaded rules from S3, then destroyed the box. See
-  [`infra/aws/README.md`](infra/aws/README.md).
-- **MCP tools never take a SQL string.** The LLM only fills typed arguments. Queries are
-  parameterized, the role is SELECT-only, and unfiltered dumps are rejected. That is the
-  difference between "an LLM can query my fraud DB" and "an LLM can wreck my fraud DB."
+Compose is the path I actually iterate on. Manifests in `k8s/` describe the same topology
+for kind/minikube, with an HPA on scoring-service only (CPU 70%, 1–3 replicas).
 
-## Observability
+```bash
+docker compose build
+docker tag fraudguard-scoring-service fraudguard/scoring-service:1.0.0
+docker tag fraudguard-consumer-service fraudguard/consumer-service:1.0.0
+docker tag fraudguard-gateway-service fraudguard/gateway-service:1.0.0
+docker tag fraudguard-transaction-simulator fraudguard/transaction-simulator:1.0.0
 
-- Spring: Micrometer → `/actuator/prometheus`
-- FastAPI: `prometheus_fastapi_instrumentator` → `/metrics`
-- Custom counters: `fraudguard_transactions_scored_total`,
-  `fraudguard_alerts_published_total`, `fraudguard_transactions_fallback_total`
-- JSON logs (`logstash-logback-encoder` / `python-json-logger`) so this would ship to
-  CloudWatch without reformatting
+kind create cluster --name fraudguard
+kind load docker-image fraudguard/scoring-service:1.0.0 --name fraudguard
+kind load docker-image fraudguard/consumer-service:1.0.0 --name fraudguard
+kind load docker-image fraudguard/gateway-service:1.0.0 --name fraudguard
+kind load docker-image fraudguard/transaction-simulator:1.0.0 --name fraudguard
 
-## AWS stretch
+kubectl apply -k k8s/
+kubectl -n fraudguard get pods
+```
+
+metrics-server must be installed in kind for the HPA to actually scale.
+
+## AWS stretch (optional)
 
 Terraform in `infra/aws/` creates ECR repos, an S3 bucket with the rules JSON, and one
 EC2 instance with Docker. Set `AWS_S3_BUCKET` on scoring-service to load rules from S3
 (`app/s3_loader.py`); it falls back to the image file if S3 isn't there.
 
 I treat this as "deployed to validate," not "ran in production." Tear it down after
-screenshots (`terraform destroy`).
+screenshots (`terraform destroy`). See [`infra/aws/README.md`](infra/aws/README.md).
 
 ## Future work
 
 - Avro + Schema Registry instead of plain JSON
 - Fully async scoring over a Kafka topic (the sync REST hop is the obvious bottleneck)
-- A real feature store (Feast) instead of a Redis hash
+- A real feature store instead of a Redis hash
 - Dedicated alert-service that pages / webhooks instead of logging in the same JVM
-- Strimzi for Kafka on k8s instead of a single Bitnami broker
 - Proper ML training pipeline if I ever get labelled data that isn't synthetic
 
-## Resume bullets (draft)
+## Resume
 
-- Built a Kafka-based fraud detection pipeline that enriches simulated UPI/card payments
-  from Redis, scores them in a FastAPI service, and stores results in PostgreSQL.
-- Implemented a Resilience4j circuit breaker on the consumer → scoring call with a local
-  rules fallback so the Kafka consumer keeps draining when scoring is down.
-- Deployed the stack with Docker Compose and Kubernetes (kind), with Prometheus/Grafana
-  dashboards and an HPA on the scoring service; validated AWS via EC2, ECR, and S3.
+**FraudGuard – Real-Time Transaction Stream Processor | Kafka, Spring Boot, Python, Redis, PostgreSQL**
+
+Built a real-time fraud detection pipeline using Kafka, Spring Boot, Redis, FastAPI, and
+PostgreSQL to score and store high-risk payment transactions, with a circuit breaker
+(Resilience4j) so scoring outages don’t stall the consumer. Added a read-only MCP server
+so an LLM can query fraud data in plain English without writing SQL.
 
 ## 60-second walkthrough
 
@@ -303,9 +273,9 @@ Kafka. A Spring Boot consumer looks up that user's recent spend in Redis — cou
 stddev, devices, 5-minute velocity — then calls a Python scoring service. Scoring is
 weighted rules I can explain: high amount, z-score vs the user's own history, velocity,
 new device. If the Python service is slow I trip a circuit breaker and fall back to a
-dumber local check so Kafka doesn't pile up. High scores go to Postgres and a fraud-alerts
-topic. Gateway is just Spring Cloud Gateway in front for inject/query. I run it all in
-Compose, with k8s manifests for kind, and I did not put this on EKS."
+simpler local check so Kafka doesn't pile up. High scores go to Postgres and a fraud-alerts
+topic. A read-only MCP server lets an LLM query that data in plain English without writing
+SQL. I run it all in Docker Compose."
 
 ## License
 
