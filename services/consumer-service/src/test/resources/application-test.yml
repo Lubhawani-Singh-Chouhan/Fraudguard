@@ -1,0 +1,36 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:fraudguard;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: none
+  sql:
+    init:
+      mode: always
+
+fraudguard:
+  scoring:
+    base-url: http://127.0.0.1:1
+    connect-timeout-ms: 200
+    read-timeout-ms: 200
+  listener:
+    # Shorter than production so the dead-letter test finishes quickly.
+    # Still retries, then publishes to transactions.DLT.
+    retry-interval-ms: 20
+    retry-max-attempts: 2
+
+management:
+  health:
+    redis:
+      enabled: false
+
+logging:
+  level:
+    org.springframework.kafka: WARN
+    org.apache.kafka: ERROR
