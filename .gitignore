@@ -22,6 +22,9 @@ hs_err_pid*
 *.swp
 .cursor/
 
+# Local notes, not part of the published repo
+docs/INTERVIEW_NOTES.md
+
 # OS
 .DS_Store
 Thumbs.db
