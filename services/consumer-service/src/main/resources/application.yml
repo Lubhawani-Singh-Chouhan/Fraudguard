@@ -52,8 +52,8 @@ fraudguard:
     read-timeout-ms: 1500
   alert-threshold: ${FRAUD_ALERT_THRESHOLD:0.70}
 
-# If scoring-service is slow or down, fail fast and use the local fallback
-# instead of backing up the Kafka consumer. This is the interview talking point.
+# If scoring-service is slow or down, fail the HTTP call quickly so the
+# circuit breaker can use LocalRulesFallback instead of stalling the consumer.
 resilience4j:
   circuitbreaker:
     instances:
@@ -73,7 +73,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics,circuitbreakers
+        include: health,info,metrics,circuitbreakers
   endpoint:
     health:
       show-details: always
@@ -82,10 +82,6 @@ management:
   health:
     circuitbreakers:
       enabled: true
-  prometheus:
-    metrics:
-      export:
-        enabled: true
 
 logging:
   level:

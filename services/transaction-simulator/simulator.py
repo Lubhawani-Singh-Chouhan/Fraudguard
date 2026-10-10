@@ -4,7 +4,7 @@ Synthetic payment traffic for FraudGuard.
 Publishes JSON transactions to Kafka at a configurable rate. Most rows look like
 normal UPI/card spend for a small set of returning users. A smaller slice is
 deliberately "fraud-shaped" (new device + large amount, sometimes bursty) so the
-rules engine actually fires and Grafana has something to show.
+rules engine actually fires.
 
 Env:
   KAFKA_BOOTSTRAP_SERVERS  default kafka:29092

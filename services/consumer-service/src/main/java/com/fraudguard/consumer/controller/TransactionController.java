@@ -16,12 +16,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/api/transactions")
 @RequiredArgsConstructor
 public class TransactionController {
 
@@ -30,7 +28,7 @@ public class TransactionController {
     private final ObjectMapper objectMapper;
     private final TransactionRepository transactionRepository;
 
-    @PostMapping
+    @PostMapping("/transactions")
     public ResponseEntity<Map<String, String>> inject(@RequestBody TransactionEvent event)
             throws JsonProcessingException {
         if (event.getTransactionId() == null || event.getTransactionId().isBlank()) {
@@ -45,8 +43,8 @@ public class TransactionController {
                 .body(Map.of("transaction_id", event.getTransactionId(), "status", "queued"));
     }
 
-    @GetMapping("/{id}")
-    public TransactionRecord getOne(@PathVariable String id) {
+    @GetMapping("/transactions/{id}/score")
+    public TransactionRecord score(@PathVariable String id) {
         return transactionRepository
                 .findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "transaction not scored yet"));

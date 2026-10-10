@@ -9,7 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY rules ./rules
-COPY models ./models
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
