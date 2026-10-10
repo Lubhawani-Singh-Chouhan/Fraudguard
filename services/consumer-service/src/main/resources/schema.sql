@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS transactions (
-    id VARCHAR(64) PRIMARY KEY,
+    transaction_id VARCHAR(64) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
     amount NUMERIC(12, 2) NOT NULL,
     currency VARCHAR(8) NOT NULL DEFAULT 'INR',
@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     risk_level VARCHAR(16),
     scoring_reasons TEXT,
     scoring_mode VARCHAR(16),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT pk_transactions PRIMARY KEY (transaction_id),
+    CONSTRAINT uq_transactions_transaction_id UNIQUE (transaction_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions (user_id);

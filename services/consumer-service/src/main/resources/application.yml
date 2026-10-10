@@ -10,11 +10,16 @@ spring:
     consumer:
       group-id: fraudguard-consumer
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
         # keep this small locally; one consumer instance is enough for the demo
         max.poll.records: 50
+    listener:
+      # Commit each record only after the listener returns (or the error handler
+      # recovers it). A crash before that redelivers the record.
+      ack-mode: record
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer

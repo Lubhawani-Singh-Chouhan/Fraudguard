@@ -16,8 +16,8 @@ import lombok.Setter;
 public class TransactionRecord {
 
     @Id
-    @Column(length = 64)
-    private String id;
+    @Column(name = "transaction_id", nullable = false, unique = true, length = 64)
+    private String transactionId;
 
     @Column(name = "user_id", nullable = false, length = 64)
     private String userId;
