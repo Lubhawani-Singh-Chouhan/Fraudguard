@@ -17,27 +17,31 @@ public class TransactionConsumer {
     private final ObjectMapper objectMapper;
     private final TransactionProcessingService processingService;
 
-    @KafkaListener(topics = "#{fraudGuardProperties.topics.transactions}", groupId = "fraudguard-consumer")
+    @KafkaListener(topics = "${fraudguard.topics.transactions}", groupId = "fraudguard-consumer")
     public void onMessage(String payload) {
-        try {
-            TransactionEvent event = objectMapper.readValue(payload, TransactionEvent.class);
-            if (event.getTransactionId() == null || event.getUserId() == null) {
-                log.warn("dropping malformed transaction payload={}", payload);
-                return;
-            }
-            processingService.process(event);
-        } catch (JsonProcessingException e) {
-            log.warn("could not parse transaction json: {}", e.getOriginalMessage());
-        } catch (RuntimeException e) {
-            // don't ack-poison the partition forever; log and move on for demo traffic
-            log.error("failed to process transaction: {}", e.getMessage(), e);
-        }
+        processingService.process(parse(payload));
     }
 
-    @KafkaListener(topics = "#{fraudGuardProperties.topics.alerts}", groupId = "fraudguard-alerter")
+    @KafkaListener(topics = "${fraudguard.topics.alerts}", groupId = "fraudguard-alerter")
     public void onAlert(String payload) {
         // Dedicated alert-service is future work. For now we just log so you can
         // `docker logs fraudguard-consumer` and see high-risk hits go by.
         log.info("fraud-alert {}", payload);
+    }
+
+    private TransactionEvent parse(String payload) {
+        final TransactionEvent event;
+        try {
+            event = objectMapper.readValue(payload, TransactionEvent.class);
+        } catch (JsonProcessingException e) {
+            throw new InvalidTransactionException("malformed transaction json", e);
+        }
+        if (event.getTransactionId() == null
+                || event.getTransactionId().isBlank()
+                || event.getUserId() == null
+                || event.getUserId().isBlank()) {
+            throw new InvalidTransactionException("transaction_id and user_id are required");
+        }
+        return event;
     }
 }

@@ -23,4 +23,12 @@ public class KafkaTopicConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic transactionsDltTopic(FraudGuardProperties props) {
+        return TopicBuilder.name(props.getTopics().getTransactions() + ".DLT")
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
 }

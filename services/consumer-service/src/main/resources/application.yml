@@ -10,11 +10,16 @@ spring:
     consumer:
       group-id: fraudguard-consumer
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
         # keep this small locally; one consumer instance is enough for the demo
         max.poll.records: 50
+    listener:
+      # Commit each record only after the listener returns (or the error handler
+      # recovers it). A crash before that redelivers the record.
+      ack-mode: record
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -51,9 +56,12 @@ fraudguard:
     connect-timeout-ms: 500
     read-timeout-ms: 1500
   alert-threshold: ${FRAUD_ALERT_THRESHOLD:0.70}
+  listener:
+    retry-interval-ms: 1000
+    retry-max-attempts: 3
 
-# If scoring-service is slow or down, fail fast and use the local fallback
-# instead of backing up the Kafka consumer. This is the interview talking point.
+# If scoring-service is slow or down, fail the HTTP call quickly so the
+# circuit breaker can use LocalRulesFallback instead of stalling the consumer.
 resilience4j:
   circuitbreaker:
     instances:
@@ -64,16 +72,12 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
         register-health-indicator: true
-  timelimiter:
-    instances:
-      scoringService:
-        timeout-duration: 2s
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics,circuitbreakers
+        include: health,info,metrics,circuitbreakers
   endpoint:
     health:
       show-details: always
@@ -82,10 +86,6 @@ management:
   health:
     circuitbreakers:
       enabled: true
-  prometheus:
-    metrics:
-      export:
-        enabled: true
 
 logging:
   level:

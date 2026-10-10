@@ -1,5 +1,5 @@
 from app.models import ScoreRequest
-from app.scorer import risk_level, score_rules
+from app.scorer import risk_level, score, score_rules
 
 
 def _req(**overrides) -> ScoreRequest:
@@ -44,3 +44,12 @@ def test_zscore_flags_outlier():
     value, reasons = score_rules(_req(amount=5000, avg_amount=800, std_amount=100, tx_count=20))
     assert "amount_zscore" in reasons
     assert value >= 0.30
+
+
+def test_score_is_rules_only():
+    value, reasons, mode = score(
+        _req(amount=92000, is_new_device=True, tx_last_5m=9, std_amount=200.0, avg_amount=900.0)
+    )
+    assert mode == "rules"
+    assert "high_amount" in reasons
+    assert value >= 0.70

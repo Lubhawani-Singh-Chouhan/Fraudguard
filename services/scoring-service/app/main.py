@@ -4,7 +4,6 @@ import logging
 import time
 
 from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
 from app.models import ScoreRequest, ScoreResponse
@@ -32,12 +31,11 @@ _setup_logging()
 log = logging.getLogger("scoring")
 
 app = FastAPI(title="FraudGuard Scoring Service", version="1.0.0")
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "mode": settings.scoring_mode}
+    return {"status": "ok"}
 
 
 @app.post("/score", response_model=ScoreResponse)

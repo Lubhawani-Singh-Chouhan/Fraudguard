@@ -15,11 +15,15 @@ hs_err_pid*
 **/*.egg-info/
 **/.mypy_cache/
 
-# IDE
+# IDE / local agent config
 .idea/
 *.iml
 .vscode/
 *.swp
+.cursor/
+
+# Local notes, not part of the published repo
+docs/INTERVIEW_NOTES.md
 
 # OS
 .DS_Store
@@ -36,8 +40,3 @@ data/
 postgres-data/
 redis-data/
 
-# Models generated at runtime
-services/scoring-service/models/*.pkl
-
-# Load test output
-load-tests/results/

@@ -1,14 +1,14 @@
 # Transaction JSON schema
 
 Messages on the `transactions` topic are **plain JSON** (UTF-8), one object per Kafka record.
-I did not use Avro + Schema Registry here — that is called out as future work in the README.
-Plain JSON is enough to wire the pipeline and is easy to inspect with `kafka-console-consumer`.
+The Kafka key is `user_id`, so one user's events stay on the same partition.
+A record that is not valid JSON, or that omits `transaction_id` or `user_id`, is retried and then published to `transactions.DLT`.
 
 ## `transactions` topic
 
 | Field | Type | Example | Notes |
 |---|---|---|---|
-| `transaction_id` | string (UUID) | `"c8e1..."` | Producer-generated. Also used as Kafka key so the same user/tx stays on one partition if we key by user later. |
+| `transaction_id` | string (UUID) | `"c8e1..."` | Producer-generated. Stored as the primary key of `transactions`. A duplicate delivery of the same id is skipped. |
 | `user_id` | string | `"user_042"` | Synthetic user. Simulator keeps ~80 regular users. |
 | `amount` | number | `2499.00` | INR. |
 | `currency` | string | `"INR"` | Always INR in the simulator. |
