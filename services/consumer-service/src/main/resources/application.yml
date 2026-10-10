@@ -72,10 +72,6 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
         register-health-indicator: true
-  timelimiter:
-    instances:
-      scoringService:
-        timeout-duration: 2s
 
 management:
   endpoints:
