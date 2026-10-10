@@ -56,6 +56,9 @@ fraudguard:
     connect-timeout-ms: 500
     read-timeout-ms: 1500
   alert-threshold: ${FRAUD_ALERT_THRESHOLD:0.70}
+  listener:
+    retry-interval-ms: 1000
+    retry-max-attempts: 3
 
 # If scoring-service is slow or down, fail the HTTP call quickly so the
 # circuit breaker can use LocalRulesFallback instead of stalling the consumer.
